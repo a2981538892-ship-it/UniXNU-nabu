@@ -61,6 +61,15 @@ jobs:
           p.write_text(text.replace(old, new))
           print('Aligned trust-cache patch context with XNU d8b80295118e')
           PY
+      - name: Use restored availability tool
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "unixnu/scripts/prepare-xnu-source.py"
+          with p.open("a") as stream:
+              stream.write("\n# Use the restored host tool when modern SDKs omit it.\np = Path('.cache/xnu-work/bsd/sys/make_symbol_aliasing.sh')\ntext = p.read_text()\nold = 'AVAILABILITY_PL=\"${SDKROOT}/${DRIVERKITROOT}/usr/local/libexec/availability.pl\"'\nnew = 'AVAILABILITY_PL=\"${XNU_AVAILABILITY_PL:-${SDKROOT}/${DRIVERKITROOT}/usr/local/libexec/availability.pl}\"'\nassert text.count(old) == 1 or text.count(new) == 1, 'Unexpected availability tool lookup'\np.write_text(text.replace(old, new))\n")
+          PY
       - name: Build bootstrap kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}
