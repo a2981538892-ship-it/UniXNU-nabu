@@ -59,8 +59,32 @@ jobs:
           new = 'for item in configs scripts platform ufs gpu usb userprobe vendor; do'
           assert text.count(old) == 1, 'Legacy staging list changed; review required'
           p.write_text(text.replace(old, new))
-          print('Legacy bootstrap uses the prepared upstream XNU patch directory')
+          print('Legacy bootstrap uses prepared upstream XNU patches')
           PY
       - name: Build bootstrap kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nabu-logs"
+          bash source-ci/nabu-build.sh --upstream "$RUNNER_TEMP/unixnu" --profile nabu_bootstrap_defconfig --work "$RUNNER_TEMP/nabu-build" 2>&1 | tee "$RUNNER_TEMP/nabu-logs/bootstrap.log"
+      - name: Print compiler diagnostics
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP/unixnu/out/nabu/logs/"*.log; do
+            if [ -f "$log" ]; then
+              echo "$log"
+              grep -n -C 5 -E ': (fatal )?error:|^error:' "$log" || true
+              tail -n 15 "$log"
+            fi
+          done
+      - name: Save build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nabu-bootstrap-log
+          path: |
+            ${{ runner.temp }}/nabu-logs/bootstrap.log
+            ${{ runner.temp }}/unixnu/out/nabu/logs/*.log
+          if-no-files-found: ignore
+          retention-days: 7
