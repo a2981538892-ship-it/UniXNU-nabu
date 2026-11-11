@@ -49,6 +49,18 @@ jobs:
           set -euo pipefail
           git clone --filter=blob:none --no-checkout https://github.com/UniXNU/UniXNU.git "$RUNNER_TEMP/unixnu"
           git -C "$RUNNER_TEMP/unixnu" checkout 245aca1a9ec5b730b1cad80fade295800d2981f1
+      - name: Align patch context with pinned XNU
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('patches/xnu/nabu-master-second-trust-cache.patch')
+          text = p.read_text()
+          old = 'VM_BASE config_kasan config_ubsan config_kcov config_ksancov'
+          new = 'VM_BASE dynamic_codesigning kernel_tagging kernel_tbi config_kasan config_ubsan config_kcov config_ksancov'
+          assert text.count(old) == 1, 'Patch context changed; review required'
+          p.write_text(text.replace(old, new))
+          print('Aligned trust-cache patch context with XNU d8b80295118e')
+          PY
       - name: Build bootstrap kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}
