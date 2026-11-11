@@ -41,7 +41,7 @@ jobs:
       - name: Obtain and verify Apple build inputs
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 'https://updates.cdn-apple.com/2024FallFCS/fullrestores/062-78914/A081E8C4-D00A-4FC5-A650-A42EA1726236/iPad_10.2_17.7_21H16_Restore.ipsw' --output "$RUNNER_TEMP/restore.ipsw"
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 --max-time 1200 'https://updates.cdn-apple.com/2024FallFCS/fullrestores/062-78914/A081E8C4-D00A-4FC5-A650-A42EA1726236/iPad_10.2_17.7_21H16_Restore.ipsw' --output "$RUNNER_TEMP/restore.ipsw"
           python3 source-ci/prepare_ipsw_input.py --ipsw "$RUNNER_TEMP/restore.ipsw" --output "$UNIXNU_IPSW"
           rm "$RUNNER_TEMP/restore.ipsw"
       - name: Check out pinned UniXNU source
