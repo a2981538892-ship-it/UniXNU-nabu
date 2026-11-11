@@ -1,0 +1,64 @@
+name: Nabu 17.7 bootstrap build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nabu-bootstrap-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  bootstrap:
+    runs-on: macos-26
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      UNIXNU_IPSW: ${{ runner.temp }}/ipsw-21h16-small.zip
+      UNIXNU_DEVICE: ${{ runner.temp }}/nabu-build/device
+    steps:
+      - name: Check out device source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check Xcode and install build tools
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          brew install llvm lld mtools dtc
+          if ! command -v unifdef >/dev/null; then
+            brew install unifdef
+            echo "$(brew --prefix unifdef)/bin" >> "$GITHUB_PATH"
+          fi
+      - name: Obtain and verify Apple build inputs
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://updates.cdn-apple.com/2024FallFCS/fullrestores/062-78914/A081E8C4-D00A-4FC5-A650-A42EA1726236/iPad_10.2_17.7_21H16_Restore.ipsw' --output "$RUNNER_TEMP/restore.ipsw"
+          python3 source-ci/prepare_ipsw_input.py --ipsw "$RUNNER_TEMP/restore.ipsw" --output "$UNIXNU_IPSW"
+          rm "$RUNNER_TEMP/restore.ipsw"
+      - name: Check out pinned UniXNU source
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/UniXNU/UniXNU.git "$RUNNER_TEMP/unixnu"
+          git -C "$RUNNER_TEMP/unixnu" checkout 245aca1a9ec5b730b1cad80fade295800d2981f1
+      - name: Build bootstrap kernel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nabu-logs"
+          bash source-ci/nabu-build.sh --upstream "$RUNNER_TEMP/unixnu" --profile nabu_bootstrap_defconfig --work "$RUNNER_TEMP/nabu-build" 2>&1 | tee "$RUNNER_TEMP/nabu-logs/bootstrap.log"
+      - name: Save build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nabu-bootstrap-log
+          path: ${{ runner.temp }}/nabu-logs/bootstrap.log
+          if-no-files-found: ignore
+          retention-days: 7
