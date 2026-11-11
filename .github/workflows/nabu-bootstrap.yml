@@ -49,45 +49,18 @@ jobs:
           set -euo pipefail
           git clone --filter=blob:none --no-checkout https://github.com/UniXNU/UniXNU.git "$RUNNER_TEMP/unixnu"
           git -C "$RUNNER_TEMP/unixnu" checkout 245aca1a9ec5b730b1cad80fade295800d2981f1
-      - name: Align patch context with pinned XNU
+      - name: Preserve upstream patches for legacy bootstrap
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('patches/xnu/nabu-master-second-trust-cache.patch')
+          p = Path('source-ci/nabu-build.sh')
           text = p.read_text()
-          old = 'VM_BASE config_kasan config_ubsan config_kcov config_ksancov'
-          new = 'VM_BASE dynamic_codesigning kernel_tagging kernel_tbi config_kasan config_ubsan config_kcov config_ksancov'
-          assert text.count(old) == 1, 'Patch context changed; review required'
+          old = 'for item in configs scripts patches platform ufs gpu usb userprobe vendor; do'
+          new = 'for item in configs scripts platform ufs gpu usb userprobe vendor; do'
+          assert text.count(old) == 1, 'Legacy staging list changed; review required'
           p.write_text(text.replace(old, new))
-          print('Aligned trust-cache patch context with XNU d8b80295118e')
-          PY
-      - name: Use restored availability tool
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          p = Path(os.environ["RUNNER_TEMP"]) / "unixnu/scripts/prepare-xnu-source.py"
-          with p.open("a") as stream:
-              stream.write("\n# Use the restored host tool when modern SDKs omit it.\np = Path('.cache/xnu-work/bsd/sys/make_symbol_aliasing.sh')\ntext = p.read_text()\nold = 'AVAILABILITY_PL=\"${SDKROOT}/${DRIVERKITROOT}/usr/local/libexec/availability.pl\"'\nnew = 'AVAILABILITY_PL=\"${XNU_AVAILABILITY_PL:-${SDKROOT}/${DRIVERKITROOT}/usr/local/libexec/availability.pl}\"'\nassert text.count(old) == 1 or text.count(new) == 1, 'Unexpected availability tool lookup'\np.write_text(text.replace(old, new))\n")
+          print('Legacy bootstrap uses the prepared upstream XNU patch directory')
           PY
       - name: Build bootstrap kernel
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/nabu-logs"
-          bash source-ci/nabu-build.sh --upstream "$RUNNER_TEMP/unixnu" --profile nabu_bootstrap_defconfig --work "$RUNNER_TEMP/nabu-build" 2>&1 | tee "$RUNNER_TEMP/nabu-logs/bootstrap.log"
-      - name: Print compiler diagnostics
-        if: failure()
-        run: |
-          find "$RUNNER_TEMP/unixnu/out/nabu/logs" -name '*.log' -type f -print -exec tail -n 300 {} \;
-      - name: Save build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nabu-bootstrap-log
-          path: |
-            ${{ runner.temp }}/nabu-logs/bootstrap.log
-            ${{ runner.temp }}/unixnu/out/nabu/logs/*.log
-          if-no-files-found: ignore
-          retention-days: 7
