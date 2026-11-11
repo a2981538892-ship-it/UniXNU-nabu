@@ -15,9 +15,11 @@ jobs:
         shell: bash
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      UNIXNU_IPSW: ${{ runner.temp }}/ipsw-21h16-small.zip
-      UNIXNU_DEVICE: ${{ runner.temp }}/nabu-build/device
     steps:
+      - name: Set build paths
+        run: |
+          echo "UNIXNU_IPSW=$RUNNER_TEMP/ipsw-21h16-small.zip" >> "$GITHUB_ENV"
+          echo "UNIXNU_DEVICE=$RUNNER_TEMP/nabu-build/device" >> "$GITHUB_ENV"
       - name: Check out device source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
