@@ -58,7 +58,10 @@ jobs:
           old = 'for item in configs scripts patches platform ufs gpu usb userprobe vendor; do'
           new = 'for item in configs scripts platform ufs gpu usb userprobe vendor; do'
           assert text.count(old) == 1, 'Legacy staging list changed; review required'
-          p.write_text(text.replace(old, new))
+          text = text.replace(old, new)
+          marker = 'echo "== collect_outputs"'
+          assert text.count(marker) == 1, "Collector boundary changed; review required"
+          p.write_text(text.split(marker)[0])
           print('Legacy bootstrap uses prepared upstream XNU patches')
           PY
       - name: Build bootstrap kernel
@@ -68,6 +71,30 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/nabu-logs"
           bash source-ci/nabu-build.sh --upstream "$RUNNER_TEMP/unixnu" --profile nabu_bootstrap_defconfig --work "$RUNNER_TEMP/nabu-build" 2>&1 | tee "$RUNNER_TEMP/nabu-logs/bootstrap.log"
+      - name: Verify bootstrap candidate
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, struct, subprocess
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          kernel = root / 'unixnu/out/nabu/kernel/kernel.macho'
+          data = kernel.read_bytes()
+          assert len(data) > 1048576, 'Kernel candidate is unexpectedly small'
+          magic, cpu = struct.unpack_from('<II', data)
+          assert magic == 0xfeedfacf and cpu == 0x100000c, 'Expected ARM64 Mach-O'
+          report = {
+              'device': 'nabu', 'os_inputs': 'iPadOS 17.7 (21H16)',
+              'profile': 'nabu_bootstrap_defconfig',
+              'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data),
+              'upstream_commit': subprocess.check_output(['git', '-C', str(root / 'unixnu'), 'rev-parse', 'HEAD'], text=True).strip(),
+              'hardware_tested': False, 'desktop_boot_tested': False,
+              'scope': 'bootstrap kernel compile and prelink check',
+              'collector': 'public workflow SHA-256 and Mach-O header check',
+          }
+          output = root / 'nabu-logs/bootstrap-manifest.json'
+          output.write_text(json.dumps(report, indent=2) + '\n')
+          print(output.read_text())
+          PY
       - name: Print compiler diagnostics
         if: failure()
         run: |
@@ -84,7 +111,7 @@ jobs:
         with:
           name: nabu-bootstrap-log
           path: |
-            ${{ runner.temp }}/nabu-logs/bootstrap.log
+            ${{ runner.temp }}/nabu-logs/*
             ${{ runner.temp }}/unixnu/out/nabu/logs/*.log
           if-no-files-found: ignore
           retention-days: 7
